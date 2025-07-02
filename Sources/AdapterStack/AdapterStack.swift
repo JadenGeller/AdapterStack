@@ -14,7 +14,7 @@
 /// typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack & PaymentServiceAdapterStack
 /// ```
 
-@attached(peer, names: suffixed(AdapterStack))
+@attached(peer, names: suffixed(Stack))
 public macro Adapter(_ adaptedProtocol: Any.Type) = #externalMacro(
     module: "AdapterStackMacros", 
     type: "AdapterMacro"
