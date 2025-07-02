@@ -24,7 +24,7 @@ final class AdapterStackTests: XCTestCase {
             }
 
             extension OrderServiceAdapter {
-                typealias Stack = Self
+                typealias OrderServiceAdapterStack = OrderServiceAdapter
             }
             """
         }
@@ -43,7 +43,7 @@ final class AdapterStackTests: XCTestCase {
             }
 
             extension OrderServiceAdapter {
-                typealias Stack = Self & CartStorage.Stack & PaymentService.Stack
+                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack & PaymentServiceAdapterStack
             }
             """
         }
@@ -62,7 +62,7 @@ final class AdapterStackTests: XCTestCase {
             }
 
             extension OrderServiceAdapter {
-                typealias Stack = Self & CartStorage.Stack
+                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
             }
             """
         }
@@ -89,7 +89,7 @@ final class AdapterStackTests: XCTestCase {
             }
 
             extension OrderServiceAdapter {
-                typealias Stack = Self & CartStorage.Stack
+                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
             }
             """
         }

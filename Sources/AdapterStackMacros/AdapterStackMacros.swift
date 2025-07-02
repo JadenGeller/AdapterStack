@@ -80,7 +80,7 @@ public struct AdapterMacro: ExtensionMacro {
                     // Skip the adapted protocol itself and common base protocols
                     if inheritedName != adaptedProtocol && 
                        !["Sendable", "Equatable", "Hashable", "Codable"].contains(inheritedName) {
-                        dependencyStacks.append("\(inheritedName).Stack")
+                        dependencyStacks.append("\(inheritedName)AdapterStack")
                     }
                 }
             }
@@ -89,15 +89,23 @@ public struct AdapterMacro: ExtensionMacro {
         // Build the Stack typealias composition
         let stackComposition: String
         if dependencyStacks.isEmpty {
-            stackComposition = "Self"
+            stackComposition = protocolDecl.name.text
         } else {
-            stackComposition = "Self & \(dependencyStacks.joined(separator: " & "))"
+            stackComposition = "\(protocolDecl.name.text) & \(dependencyStacks.joined(separator: " & "))"
         }
+        
+        // Generate sibling typealias instead of nested one
+        let typealiasDecl = TypeAliasDeclSyntax(
+            name: .identifier("\(protocolDecl.name.text)Stack"),
+            initializer: TypeInitializerClauseSyntax(
+                value: IdentifierTypeSyntax(name: .identifier(stackComposition))
+            )
+        )
         
         let extensionDecl = ExtensionDeclSyntax(
             extendedType: type,
             memberBlock: MemberBlockSyntax {
-                DeclSyntax("typealias Stack = \(raw: stackComposition)")
+                DeclSyntax(typealiasDecl)
             }
         )
         

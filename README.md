@@ -6,7 +6,7 @@ Write explicit Swift code. Dependencies are transparent, boundaries are real, an
 
 ```swift
 // Zero wiring - one struct provides all your dependencies
-struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+struct CheckoutServiceProvider: CheckoutServiceAdapterStack {
     let database = PostgreSQL()
     let stripe = StripeGateway() 
     let sendgrid = SendGridClient()
@@ -149,7 +149,7 @@ protocol CheckoutService {
 }
 
 // 2. Declare what it needs via protocol composition
-@Adapter(CheckoutService.self)  // Generates the .Stack typealias
+@Adapter(CheckoutService.self)  // Generates the CheckoutServiceAdapterStack typealias
 protocol CheckoutServiceAdapter: CheckoutService, OrderService, PaymentService, NotificationService {}
 
 // 3. Implement by composing other services
@@ -163,7 +163,7 @@ extension CheckoutServiceAdapter {
 }
 
 // 4. Create one struct with your dependencies
-struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+struct CheckoutServiceProvider: CheckoutServiceAdapterStack {
     let database = PostgreSQL()
     let stripe = StripeGateway()
     let sendgrid = SendGridClient()
@@ -219,7 +219,7 @@ protocol CheckoutServiceAdapter: CheckoutService, OrderService, PaymentService, 
 
 // Generates this typealias:
 extension CheckoutServiceAdapter {
-    typealias Stack = Self & OrderServiceAdapter.Stack & PaymentServiceAdapter.Stack & NotificationServiceAdapter.Stack
+    typealias CheckoutServiceAdapterStack = CheckoutServiceAdapter & OrderServiceAdapterStack & PaymentServiceAdapterStack & NotificationServiceAdapterStack
 }
 
 // Without Stack: must declare EVERYTHING (gets worse as dependencies grow)
@@ -233,7 +233,7 @@ struct Provider: CheckoutServiceAdapter, OrderServiceAdapter, PaymentServiceAdap
 }
 
 // With Stack: just declare what you directly use
-struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+struct CheckoutServiceProvider: CheckoutServiceAdapterStack {
     let database = PostgreSQL()
     let stripe = StripeGateway()
     let sendgrid = SendGridClient()
@@ -315,7 +315,7 @@ protocol OrderServiceAdapter: OrderService {
 }
 
 // One property satisfies both
-struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+struct CheckoutServiceProvider: CheckoutServiceAdapterStack {
     let database = PostgreSQL()  // Shared by ALL services needing 'database'
     let stripe = StripeGateway()
     let sendgrid = SendGridClient()
@@ -406,7 +406,7 @@ Sometimes you want confidence that your services work together correctly:
 ```swift
 @Test("Order flows through the full service stack")
 func checkoutIntegration() async throws {
-    struct TestProvider: CheckoutServiceAdapter.Stack {
+    struct TestProvider: CheckoutServiceAdapterStack {
         let database = SQLite(":memory:")      // Real DB, test instance
         let stripe = StripeTestMode()          // Real Stripe, test mode
         let sendgrid = MockEmail()             // Capture emails
@@ -435,7 +435,7 @@ Some scenarios require mixing real and mock services to properly test behavior:
 ```swift
 @Test("Inventory reservation rollback on payment failure")
 func inventoryRollback() async throws {
-    struct TestProvider: CheckoutServiceAdapter.Stack {
+    struct TestProvider: CheckoutServiceAdapterStack {
         let database = PostgreSQL.testDB()        // REAL - need actual transactions
         let stripe = FailAfterNSeconds(2)        // Fails after delay
         let inventory = RealInventoryAPI()       // REAL - testing its rollback logic
@@ -471,7 +471,7 @@ This pattern bridges the gap between SwiftUI's environment and your service laye
 SwiftUI's environment uses structural composition - just like our pattern. Service providers can pull any dependencies from the environment:
 
 ```swift
-struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack, DynamicProperty {
+struct CheckoutServiceProvider: CheckoutServiceAdapterStack, DynamicProperty {
     @Environment(\.database) var database
     @Environment(\.stripe) var stripe  
     @Environment(\.sendgrid) var sendgrid
@@ -501,7 +501,7 @@ The structural typing works perfectly: SwiftUI provides values by key path, our 
 Create different service behaviors for SwiftUI previews:
 
 ```swift
-struct PreviewCheckoutProvider: CheckoutServiceAdapter.Stack {
+struct PreviewCheckoutProvider: CheckoutServiceAdapterStack {
     let database = InMemoryDB()
     let stripe: MockStripe
     let sendgrid = MockEmail()
