@@ -602,7 +602,7 @@ Only views that need to perform business operations should be generic over servi
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mattmassicotte/AdapterStack", from: "1.0.0")
+    .package(url: "https://github.com/mattmassicotte/AdapterStack", from: "1.0.1")
 ]
 ```
 
