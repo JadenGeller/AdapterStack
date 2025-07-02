@@ -11,12 +11,10 @@
 /// }
 /// 
 /// // Generated:
-/// extension OrderServiceAdapter {
-///     typealias Stack = Self & CartStorage.Stack & PaymentService.Stack
-/// }
+/// typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack & PaymentServiceAdapterStack
 /// ```
 
-@attached(extension, names: named(Stack))
+@attached(peer, names: suffixed(AdapterStack))
 public macro Adapter(_ adaptedProtocol: Any.Type) = #externalMacro(
     module: "AdapterStackMacros", 
     type: "AdapterMacro"

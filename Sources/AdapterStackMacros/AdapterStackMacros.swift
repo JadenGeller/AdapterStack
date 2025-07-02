@@ -40,14 +40,12 @@ extension AdapterMacroDiagnostic: DiagnosticMessage {
 }
 
 
-public struct AdapterMacro: ExtensionMacro {
+public struct AdapterMacro: PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
-        attachedTo declaration: some DeclGroupSyntax,
-        providingExtensionsOf type: some TypeSyntaxProtocol,
-        conformingTo protocols: [TypeSyntax],
+        providingPeersOf declaration: some DeclSyntaxProtocol,
         in context: some MacroExpansionContext
-    ) throws -> [ExtensionDeclSyntax] {
+    ) throws -> [DeclSyntax] {
         guard let protocolDecl = declaration.as(ProtocolDeclSyntax.self) else {
             context.diagnose(AdapterMacroDiagnostic.onlyApplicableToProtocol.diagnose(at: declaration))
             return []
@@ -102,14 +100,7 @@ public struct AdapterMacro: ExtensionMacro {
             )
         )
         
-        let extensionDecl = ExtensionDeclSyntax(
-            extendedType: type,
-            memberBlock: MemberBlockSyntax {
-                DeclSyntax(typealiasDecl)
-            }
-        )
-        
-        return [extensionDecl]
+        return [DeclSyntax(typealiasDecl)]
     }
     
     private static func extractProtocolName(from node: AttributeSyntax) -> String? {

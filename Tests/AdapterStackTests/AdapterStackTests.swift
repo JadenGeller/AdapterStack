@@ -22,10 +22,8 @@ final class AdapterStackTests: XCTestCase {
             """
             protocol OrderServiceAdapter: OrderService {
             }
-
-            extension OrderServiceAdapter {
-                typealias OrderServiceAdapterStack = OrderServiceAdapter
-            }
+            
+            typealias OrderServiceAdapterStack = OrderServiceAdapter
             """
         }
     }
@@ -41,10 +39,8 @@ final class AdapterStackTests: XCTestCase {
             """
             protocol OrderServiceAdapter: OrderService, CartStorage, PaymentService {
             }
-
-            extension OrderServiceAdapter {
-                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack & PaymentServiceAdapterStack
-            }
+            
+            typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack & PaymentServiceAdapterStack
             """
         }
     }
@@ -60,10 +56,8 @@ final class AdapterStackTests: XCTestCase {
             """
             protocol OrderServiceAdapter: OrderService, CartStorage, Sendable, Equatable {
             }
-
-            extension OrderServiceAdapter {
-                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
-            }
+            
+            typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
             """
         }
     }
@@ -87,10 +81,8 @@ final class AdapterStackTests: XCTestCase {
             """
             protocol OrderServiceAdapter: CartStorage {
             }
-
-            extension OrderServiceAdapter {
-                typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
-            }
+            
+            typealias OrderServiceAdapterStack = OrderServiceAdapter & CartStorageAdapterStack
             """
         }
     }
