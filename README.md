@@ -1,304 +1,308 @@
 # AdapterStack
 
-A Swift macro for protocol-based dependency injection that eliminates boilerplate while maintaining type safety.
-
-## Quick Start
+Write honest Swift code. Dependencies are explicit, boundaries are real, and the compiler proves it works.
 
 ```swift
-import AdapterStack
-
-// 1. Define your service protocols
-protocol OrderService {
-    func createOrder() async throws -> Order
+// One struct provides all your dependencies
+struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+    let database = PostgreSQL()
+    let stripe = StripeGateway() 
+    let sendgrid = SendGridClient()
 }
 
-// 2. Create adapters with the @Adapter macro
-@Adapter(OrderService.self)
-protocol OrderServiceAdapter: OrderService, CartStorage, PaymentService {
-    // Macro generates: typealias Stack = Self & CartStorage.Stack & PaymentService.Stack
+// Pass it everywhere - each use site only sees what it needs
+func showCheckout<S: CheckoutService>(service: S) {
+    // service.database  ❌ Compiler error! 
+    // Can only use CheckoutService methods
 }
 
-// 3. Implement your business logic
-extension OrderServiceAdapter {
-    func createOrder() async throws -> Order {
-        let cart = try await loadCart()           // From CartStorage
-        let payment = try await processPayment()  // From PaymentService
-        return Order(cart: cart, payment: payment)
-    }
+func processPayment<S: PaymentService>(service: S) {
+    // service.sendgrid  ❌ Compiler error!
+    // Can only use PaymentService methods  
 }
 
-// 4. Create environment with just platform dependencies
-struct Environment: OrderServiceAdapter.Stack {
-    let database = SQLiteDatabase()
-    let paymentGateway = StripeGateway()
-}
-
-// 5. Use through protocols
-let env = Environment()
-let order = try await env.createOrder()  // Type-safe, no wiring
+let provider = CheckoutServiceProvider()
+showCheckout(service: provider)      // ✅ Same provider
+processPayment(service: provider)    // ✅ Different view
 ```
 
 ## The Problem
 
-Traditional dependency injection requires manually building object graphs:
+Most Swift code lies about its dependencies. Functions secretly reach into singletons and services know too much about each other:
 
 ```swift
-// Manual wiring becomes complex quickly
-let db = Database()
-let payment = PaymentGateway()
-let cartStorage = CartStorageImpl(database: db)
-let paymentService = PaymentServiceImpl(gateway: payment)
-let orderService = OrderServiceImpl(cart: cartStorage, payment: paymentService)
+// Dishonest code - what does this really need?
+func createOrder() async throws -> Order {
+    let user = AuthManager.shared.currentUser  // Hidden dependency
+    let cart = await CartStorage.shared.load() // Another one
+    let payment = try await StripeAPI.charge() // And another
+    Analytics.track("order_created")            // Effects everywhere
+    
+    return Order(user: user, cart: cart)
+}
 ```
+
+The cost compounds: hidden dependencies make testing painful, reasoning impossible, and refactoring dangerous.
 
 ## The Solution
 
-AdapterStack uses Swift's protocol system to eliminate wiring:
-
-- **Protocols define capabilities** (what services can do)
-- **Adapters compose protocols** (how services depend on each other)  
-- **Environments provide implementations** (platform dependencies only)
-- **The macro generates Stack typealiases** (dependency composition automation)
-
-## Core Concepts
-
-### Adapters
-Protocols that define service capabilities and their dependencies:
+AdapterStack makes dependencies explicit through Swift's type system. Services declare exactly what they need:
 
 ```swift
-@Adapter(CartStorage.self)
-protocol CartStorageAdapter: CartStorage {
-    var database: Database { get }  // Declares dependency
-}
-
-extension CartStorageAdapter {
-    func saveCart(_ cart: Cart) async throws {
-        // Implementation using database dependency
-    }
-}
-```
-
-### Stacks  
-Generated typealiases that compose all transitive dependencies:
-
-```swift
-// Macro generates:
-extension CartStorageAdapter {
-    typealias Stack = Self  // No dependencies = just Self
-}
-
-extension OrderServiceAdapter {  
-    typealias Stack = Self & CartStorage.Stack & PaymentService.Stack
-}
-```
-
-### Environments
-Concrete types that provide all platform dependencies:
-
-```swift
-struct Environment: OrderServiceAdapter.Stack {
-    let database = SQLiteDatabase()      // Satisfies CartStorage requirement
-    let paymentGateway = StripeGateway() // Satisfies PaymentService requirement
-    // All service methods now available
-}
-```
-
-### Dependency Sharing
-Same-named properties automatically satisfy multiple adapters:
-
-```swift
-protocol CartStorageAdapter { var database: Database { get } }
-protocol UserStorageAdapter { var database: Database { get } }
-
-struct Environment: CartStorageAdapter.Stack & UserStorageAdapter.Stack {
-    let database = SQLiteDatabase()  // Satisfies both requirements
-}
-```
-
-## Complete Example
-
-```swift
-import AdapterStack
-
-// Layer 1: Platform protocols
-protocol Database {
-    func save(_ key: String, _ data: Data) async throws
-    func load(_ key: String) async throws -> Data?
-}
-
-protocol PaymentGateway {
-    func charge(amount: Decimal, token: String) async throws
-}
-
-// Layer 2: Service protocols and adapters
-protocol CartStorage {
-    func saveCart(_ cart: Cart) async throws
-    func loadCart() async throws -> Cart
-}
-
-@Adapter(CartStorage.self)
-protocol CartStorageAdapter: CartStorage {
-    var database: Database { get }
-}
-// Generated: extension CartStorageAdapter { typealias Stack = Self }
-
-extension CartStorageAdapter {
-    func saveCart(_ cart: Cart) async throws {
-        let data = try JSONEncoder().encode(cart)
-        try await database.save("cart", data)
-    }
-    
-    func loadCart() async throws -> Cart {
-        guard let data = try await database.load("cart") else {
-            return Cart(items: [])
-        }
-        return try JSONDecoder().decode(Cart.self, from: data)
-    }
-}
-
-// Layer 3: Business logic
-protocol OrderService {
-    func createOrder() async throws -> Order
-}
-
-@Adapter(OrderService.self)
-protocol OrderServiceAdapter: OrderService, CartStorage, PaymentService {
-    // Gets all capabilities through protocol composition
-}
-// Generated: extension OrderServiceAdapter { 
-//     typealias Stack = Self & CartStorage.Stack & PaymentService.Stack 
-// }
-
-extension OrderServiceAdapter {
-    func createOrder() async throws -> Order {
-        let cart = try await loadCart()           // From CartStorage
-        let payment = try await processPayment()  // From PaymentService
-        return Order(cart: cart, payment: payment)
-    }
-}
-
-// Layer 4: Feature level
+// 1. Define what your service does
 protocol CheckoutService {
-    func processCheckout() async throws -> Order
+    func checkout(cart: Cart) async throws -> Order
 }
 
-@Adapter(CheckoutService.self)
-protocol CheckoutServiceAdapter: CheckoutService, OrderService {
-    // Composes order service capabilities
-}
-// Generated: extension CheckoutServiceAdapter {
-//     typealias Stack = Self & OrderService.Stack
-// }
+// 2. Declare what it needs via protocol composition
+@Adapter(CheckoutService.self)  // Generates the .Stack typealias
+protocol CheckoutServiceAdapter: CheckoutService, OrderService, PaymentService, NotificationService {}
 
+// 3. Implement by composing other services
 extension CheckoutServiceAdapter {
-    func processCheckout() async throws -> Order {
-        return try await createOrder()           // From OrderService
+    func checkout(cart: Cart) async throws -> Order {
+        let order = try await createOrder(from: cart)        // From OrderService
+        try await processPayment(for: order.total)           // From PaymentService
+        try await sendOrderConfirmation(for: order)          // From NotificationService
+        return order
     }
 }
 
-// Final environment - just the platform dependencies!
-struct CheckoutServiceEnvironment: CheckoutServiceAdapter.Stack {
-    let database = SQLiteDatabase()
-    let paymentGateway = StripeGateway()
+// 4. Create one struct with your dependencies
+struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+    let database = PostgreSQL()
+    let stripe = StripeGateway()
+    let sendgrid = SendGridClient()
+}
+```
+
+Now dependencies are explicit, boundaries are enforced, and everything is testable.
+
+## How It Works
+
+### Adapters Bridge Protocols to Dependencies
+
+The key insight: separate what a service IS from what it NEEDS.
+
+```swift
+// CheckoutService defines the interface
+protocol CheckoutService {
+    func checkout() async throws -> Order
 }
 
-// Usage in SwiftUI
-struct CheckoutView<Service: CheckoutService>: View {
-    let service: Service
+// CheckoutServiceAdapter declares dependencies
+@Adapter(CheckoutService.self)
+protocol CheckoutServiceAdapter: CheckoutService, OrderService, PaymentService, NotificationService {}
+
+// How do adapters provide functionality? Through protocol extensions:
+extension CheckoutServiceAdapter {
+    func checkout() async throws -> Order {
+        // Since this type conforms to OrderService, PaymentService & NotificationService,
+        // we can use their methods directly:
+        let order = try await createOrder()                 // From OrderService protocol
+        try await processPayment(order.total)               // From PaymentService protocol
+        try await sendOrderConfirmation(for: order)         // From NotificationService protocol
+        return order
+    }
+}
+```
+
+The adapter just uses the methods from its composed protocols - it doesn't care how they're implemented.
+
+### Stacks Encapsulate Transitive Dependencies
+
+Stack saves you from declaring transitive dependencies. Instead of listing every adapter in the dependency tree, you just declare what you directly need:
+
+```swift
+// Without Stack: must declare entire dependency tree
+struct Provider: CheckoutServiceAdapter, OrderServiceAdapter, PaymentServiceAdapter, NotificationServiceAdapter {
+    let database = PostgreSQL()
+    let stripe = StripeGateway()
+    let sendgrid = SendGridClient()
+}
+
+// With Stack: only think about direct dependencies
+struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+    let database = PostgreSQL()
+    let stripe = StripeGateway()
+    let sendgrid = SendGridClient()
+}
+
+// The macro generates this typealias per adapter:
+extension CheckoutServiceAdapter {
+    typealias Stack = Self & OrderServiceAdapter.Stack & PaymentServiceAdapter.Stack & NotificationServiceAdapter.Stack
+}
+```
+
+Stack gives you local reasoning - you only think about direct dependencies, not the whole tree.
+
+### The Key Insight
+
+What makes this pattern special is how it reconciles two seemingly incompatible goals.
+
+This pattern cleverly combines two things that normally conflict:
+
+**1. Implicit parameter behavior** - Dependencies flow automatically through structural typing  
+**2. Access control boundaries** - Protocol constraints limit what each function can access
+
+Traditional approaches make you choose:
+- Classes with `private` give you boundaries but require manual wiring, boilerplate, and deep hierarchies
+- Service locators give you convenience but no boundaries
+
+AdapterStack puts all methods in the same namespace (your provider struct) but uses protocols to control access. You get both automatic wiring AND compile-time boundaries.
+
+```swift
+struct Provider: CheckoutServiceStack {
+    let database = PostgreSQL()
+    let stripe = StripeGateway()
+    
+    // Has ALL methods from ALL services
+    // But protocol constraints control access!
+}
+
+func processPayment<S: PaymentService>(service: S) {
+    // Can only see PaymentService methods
+    // Even though 'service' has everything
+}
+```
+
+This is the magic: your provider is a "superservice" with all capabilities, but each use site only sees a narrow slice. The same struct, viewed through different protocol lenses.
+
+## Core Benefits
+
+This design gives you four powerful properties that are usually at odds with each other:
+
+### Dependencies Are Explicit (Capability Security)
+
+Functions declare their capabilities in their type signature:
+
+```swift
+// This function can ONLY do payment operations
+func charge<S: PaymentService>(service: S, amount: Decimal) async throws
+
+// This function can do payments AND notifications  
+func chargeAndNotify<S: PaymentService & NotificationService>(service: S) async throws
+
+// Compare to traditional code where capabilities are hidden:
+func charge(amount: Decimal) async throws {
+    // What can this function do? No way to know without reading the body
+}
+```
+
+This is capability-based security at the language level. Functions can only perform the effects you explicitly grant them. Perfect local reasoning about what code can do.
+
+### Boundaries Are Compiler-Enforced
+
+Traditional architectures rely on convention or documentation for boundaries. This pattern makes them real:
+
+```swift
+func handlePayment<S: PaymentService>(service: S, amount: Decimal) async throws {
+    try await service.charge(amount: amount)
+    // service.database.query(...)  ❌ Compiler error - no database access here!
+}
+
+func handleOrder<S: OrderService & PaymentService>(service: S) async throws {
+    let order = try await service.createOrder()
+    try await service.charge(amount: order.total)  // ✅ Can access payment methods
+}
+```
+
+The compiler proves your architectural boundaries. Not by convention, not by documentation - by the type system.
+
+### Dependencies Shared Structurally (Implicit Parameters)
+
+When multiple services need the same dependency, they share it automatically:
+
+```swift
+protocol OrderServiceAdapter: OrderService {
+    associatedtype DB: Database
+    var database: DB { get }
+}
+
+protocol NotificationServiceAdapter: NotificationService {
+    associatedtype DB: Database
+    var database: DB { get }  // Same property name!
+}
+
+// One property satisfies both
+struct AppServiceProvider: AppServiceStack {
+    let database = PostgreSQL()  // Shared by ALL services needing 'database'
+}
+```
+
+Like implicit parameters in Scala/Haskell, dependencies propagate automatically by name through structural typing.
+
+### Zero Runtime Cost
+
+The pattern compiles away entirely:
+- **Static dispatch**: Protocol requirements become direct calls via generics
+- **Value semantics**: Providers are structs - no allocations, no reference counting
+- **Cross-module inlining**: Swift inlines protocol methods across module boundaries
+- **No intermediates**: No service locator, no container, no runtime resolution
+
+## Testing Without Mocks
+
+No mocking frameworks needed. Just different implementations:
+
+```swift
+// Production
+struct ProdCheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+    let database = PostgreSQL()
+    let stripe = StripeAPI()
+    let sendgrid = SendGridClient()
+}
+
+// Testing  
+struct TestCheckoutServiceProvider: CheckoutServiceAdapter.Stack {
+    let database = InMemoryDB()
+    let stripe = MockStripe()
+    let sendgrid = MockSendGrid()
+}
+
+// Use the same functions with different providers
+func test() async {
+    let prod = ProdCheckoutServiceProvider()
+    let test = TestCheckoutServiceProvider()
+    
+    // Same interface, different behavior
+    try await handleCheckout(service: prod, cart: cart)  // Hits real Stripe
+    try await handleCheckout(service: test, cart: cart)  // Uses mock
+}
+```
+
+## SwiftUI Integration
+
+Services can bridge to SwiftUI's environment:
+
+```swift
+struct CheckoutServiceProvider: CheckoutServiceAdapter.Stack, DynamicProperty {
+    @Environment(\.database) var database
+    @Environment(\.stripe) var stripe
+    @Environment(\.sendgrid) var sendgrid
+}
+
+struct CheckoutView: View {
+    let cart: Cart
     
     var body: some View {
-        Button("Complete Order") {
-            Task { try await service.processCheckout() }
-        }
+        CheckoutButton(
+            cart: cart,
+            service: CheckoutServiceProvider()  // Pulls from environment
+        )
     }
 }
-
-// Works seamlessly
-CheckoutView(service: CheckoutServiceEnvironment())
-```
-
-## Benefits
-
-### Minimal Boilerplate
-```swift
-// Before: Manual wiring
-let service = OrderServiceImpl(
-    cart: CartStorageImpl(database: db),
-    payment: PaymentServiceImpl(gateway: gateway)
-)
-
-// After: Just declare dependencies
-struct Environment: OrderServiceAdapter.Stack {
-    let database = db
-    let paymentGateway = gateway
-}
-```
-
-### Type Safety
-- Compiler enforces all dependencies are provided
-- Protocol boundaries prevent implementation leaks
-- Missing dependencies = compile-time errors
-
-### Testing Flexibility
-```swift
-// Mock entire services
-struct MockOrderService: OrderService { /* */ }
-
-// Or mock just the dependencies
-struct TestEnvironment: OrderServiceAdapter.Stack {
-    let database = MockDatabase()
-    let paymentGateway = MockPaymentGateway()
-}
-```
-
-### SwiftUI Integration
-```swift
-struct OrderView<Service: OrderService>: View {
-    let service: Service
-    // View only sees OrderService methods, nothing else
-}
-
-// Works with any conforming type
-OrderView(service: environment)
-OrderView(service: mockService)
 ```
 
 ## Installation
 
-Add as a local package dependency:
-
 ```swift
-// Package.swift
 dependencies: [
-    .package(path: "../AdapterStack")
+    .package(url: "https://github.com/mattmassicotte/AdapterStack", from: "1.0.0")
 ]
-
-// In your target
-dependencies: ["AdapterStack"]
 ```
 
-Or add to Xcode project as local package.
+The macro saves one typealias per adapter. The pattern is just protocols.
 
-## Requirements
+## License
 
-- Swift 5.9+
-- iOS 13.0+ / macOS 10.15+ / tvOS 13.0+ / watchOS 6.0+
-
-## When to Use
-
-AdapterStack works well for:
-- **Medium to large Swift projects** with multiple service layers
-- **Teams that value type safety** over dynamic dependency injection  
-- **SwiftUI applications** that need clean separation between UI and business logic
-- **Projects with complex dependencies** that are hard to wire manually
-
-Consider alternatives if:
-- You have simple dependency needs (1-2 services)
-- You prefer runtime dependency resolution
-- Your team is unfamiliar with protocol-oriented programming
-
-## Design Philosophy
-
-This pattern leverages Swift's protocol system instead of fighting it. Rather than building object graphs, you compose protocol capabilities. Dependencies are shared structurally by name, eliminating explicit wiring while maintaining compile-time safety.
-
-The macro handles the tedious Stack typealias generation, but the architecture remains explicit and understandable.
+MIT
